@@ -1,0 +1,194 @@
+---
+title: "et_cinema"
+author: "Rnault"
+date: "2/13/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+pacman::p_load(tidyverse)
+```
+
+Loading files
+```{r message=FALSE}
+data_session1 <- read_csv2("cinema1.csv")
+data_session2 <- read_csv2("cinema2.csv")
+p_info <- read_csv("participant info.csv")
+```
+
+
+Joining files, adding information and transforming variables
+```{r}
+# Combining the data from both sessions:
+data_session1 <- data_session1 %>% 
+  mutate(session = 1)
+data_session2 <- data_session2 %>% 
+  mutate(session = 2)
+
+data <- rbind(data_session1,data_session2)
+
+# Calculate the velocity of eye mouvements by:
+  #   - calculating euclidian distance between x,y points at step n and n+1
+  #   - time difference at step n and n+1 (usually 23-24ms, but sometimes the system hics up)
+data <- data %>% 
+  group_by(Name, session) %>% 
+  mutate(Xp = lead(X), Yp = lead(Y), Tp = lead(Time)) %>% # lead() to get the value of next row for X, Y and Time
+  rowwise() %>% 
+  mutate(Velocity = sqrt( ((Xp - X)/(Tp - Time ))^2 + ((Yp - Y)/(Tp - Time))^2 )) %>% 
+  filter(!is.na(Velocity))
+
+# divide in saccades and fixations based on dynamical clustering of velocity using kmeans()
+  #   - Below a certain velocity threshold, it is a fixation, above it is a saccade
+  #   - Individual variation in threshold exists
+data <- data %>% 
+  group_by(Name, session) %>% 
+  # Fixation gives us either 1 or 2, telling us if the velocity value on the current row
+  # belongs to group 1 or 2 (as defined by kmeans clustering)
+  mutate(Fixation = unlist(kmeans(Velocity, sort(unlist(kmeans(Velocity, 2)[2])))[1]), 
+  center_mean = ifelse(Fixation == 1, # we save the mean velocity value of both event types
+                       sort(unlist(kmeans(Velocity, 2)$center))[1], 
+                       sort(unlist(kmeans(Velocity, 2)$center))[2])) %>% 
+  mutate(event = ifelse(Fixation == 1, "fixation", "saccade")) # we make it more comprehensible
+
+# label each event with a number
+data <- data %>% 
+  group_by(Name, session) %>% 
+  arrange(`GP-No`) %>% 
+  # We first need to check where in the column we switch from one type of event to anoother
+  # Then we count everytime a change occurs
+  mutate(event_n = cumsum(c(1,as.numeric(diff(Fixation))!=0))) %>%
+  # Now, events are numbered regardless of type:
+  #   - fixation 1, saccade 2, fixation 3, saccade 4, ...
+  # But we would like 2 lists:
+  #   - saccade number 1, 2, 3, ..., n
+  #   - fixation number 1, 2, 3, ..., n
+  # Given that a fixation can only be followed by a saccade and a saccade by a fixation, we end up with an easy distribution:
+  #   - all events of one type have odd numbers while all events of the other type have even numbers.
+  # We simply need to deal with the incremental offset 
+  mutate(event_n = ifelse(event_n %% 2 == 0, # if n is even:
+                          event_n - (event_n / 2), # replace it by n - (n/2)
+                          (event_n-1) - ((event_n-1) / 2) + 1)) # if n is odd, refer to n-1
+
+# calculate the duration of each event
+data <- data %>% 
+  group_by(Name, session, event, event_n) %>% 
+  mutate(event_d = max(Tp) - min(Time)) # for each event, substract the minimum time (which will be time at the start of the event) to the maximum time of the next step (Tp) (which will be the time right after the last step of the event)
+
+# Let's clean and add demographic information to the dataframe
+p_info <- p_info %>% 
+  mutate(Name = cinema) %>% 
+  select(-cinema)
+data <- merge(p_info, data)
+
+# Let's transform some value and get rid of others
+data <- data %>% 
+  mutate(website = case_when( # depending on what condition the participant was in, let's determine which data goes with which website 
+    session == 1 & `Cinemaxx First` == 0 ~ "nfbio",
+    session == 1 & `Cinemaxx First` == 1 ~ "cinemaxx",
+    session == 2 & `Cinemaxx First` == 1 ~ "nfbio",
+    session == 2 & `Cinemaxx First` == 0 ~ "cinemaxx",
+  )) %>% 
+  mutate(cinemaxx_1st = `Cinemaxx First`,
+         order_tickets_online =  `Ordering Cinema Tickets Online`,
+         timestep = `GP-No`,
+         pdl = `Pupil Diameter Left (mm)`,
+         pdr = `Pupil Diameter Right (mm)`,
+         mouse_x = `Mouse X-coord`,
+         mouse_y = `Mouse Y-coord`) %>% # Some names are just not appropriate for data wrangling
+  select(-c(`Cinemaxx First`, `Ordering Cinema Tickets Online`, `GP-No`, AoI, `X-offset`, `Y-offset`, `Pupil Diameter Left (mm)`,
+            `Pupil Diameter Right (mm)`, Fixation, `Mouse X-coord`, `Mouse Y-coord`))   # getting rid of useless columns
+ 
+# standardise spelling and data structure
+data <- data %>%  
+  rename_all(tolower) %>% 
+  select(name, age, order_tickets_online, cinemaxx_1st, session, website, # demographics and metadata
+         timestep, time, tp, timegap, # time related variables
+         x, y, xp, yp, velocity, # gaze variables
+         event, event_n, event_d, center_mean, # fixation/saccades variables
+         pdl, pdr, # pupil variables
+         mouse_x, mouse_y # mouse variables
+         ) %>% 
+  arrange(name, session, timestep) # rearrange the dataframe for clarity
+
+```
+
+SAVE NEW DATAFRAME
+```{r}
+write_csv(data, "clean_data.csv" )
+
+# just checking
+#new_data <- read_csv("clean_data.csv")
+```
+
+
+SOME SANITY CHECKS
+```{r}
+# Inspects individual center means (individual differences in fixation and saccade velocity) 
+# Fixations
+data %>% 
+  group_by(name) %>% 
+  filter(event == "fixation") %>% 
+  distinct(center_mean)
+# Saccades
+data %>% 
+  group_by(name) %>% 
+  filter(event == "saccade") %>% 
+  distinct(center_mean)
+
+
+# Checking the ratio between fixations and saccades for each participant
+data %>% 
+  group_by(name) %>% 
+  count(event) %>% 
+  mutate(ratio = n/lead(n)) 
+
+# Checking the duration of fixations and saccades
+# mean and sd
+data %>% 
+  group_by(name, event) %>% 
+  summarize(mean(event_d), sd(event_d))
+
+data %>% 
+  group_by(name, event) %>% 
+  ggplot(aes(event_d, colour=name)) +
+  geom_density() +
+  facet_wrap(~event, scales = "free")
+```
+SANITY CHECK USING TRACE PLOTS
+```{r}
+pacman::p_load(gganimate, png, gifski)
+
+# trace plot of the 10 first seconds of participant "42"
+data %>% 
+  filter(name == "42", timestep < 435, session == 1) %>% 
+  arrange(timestep) %>% 
+  ggplot( aes(x=x,y=y, colour=event, shape=event, group=NA)) +
+  coord_fixed(ratio = 1, xlim = c(0,1920), ylim = c(0,1080), expand = TRUE,
+  clip = "on") + # we want the plot to fit the dimensions of the screen used
+  geom_point() +
+  geom_path(alpha=1/2) +
+  transition_reveal(timestep)
+
+# trace plot of the 10 first seconds of participant "The Teacher"
+data %>% 
+  filter(name == "The Teacher", timestep < 435, session == 1) %>% 
+  arrange(timestep) %>% 
+  ggplot( aes(x=x,y=y, colour=event, shape=event, group=NA)) +
+  coord_fixed(ratio = 1, xlim = c(0,1920), ylim = c(0,1080), expand = TRUE,
+  clip = "on") + # we want the plot to fit the dimensions of the screen used
+  geom_point() +
+  geom_path(alpha=1/2) +
+  transition_reveal(timestep)
+
+# trace plot of the 10 first seconds of participant "Wammelting"
+data %>% 
+  filter(name == "Wammelting", timestep < 435, session == 1) %>% 
+  arrange(timestep) %>% 
+  ggplot( aes(x=x,y=y, colour=event, shape=event, group=NA)) +
+  coord_fixed(ratio = 1, xlim = c(0,1920), ylim = c(0,1080), expand = TRUE,
+  clip = "on") + # we want the plot to fit the dimensions of the screen used
+  geom_point() +
+  geom_path(alpha=1/2) +
+  transition_reveal(timestep)
+
+```

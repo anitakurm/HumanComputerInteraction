@@ -1,0 +1,105 @@
+---
+title: "homework"
+author: "Rnault"
+date: "2/19/2020"
+output: html_document
+---
+
+```{r}
+pacman::p_load(tidyverse, lmerTest)
+```
+
+
+# READ FILE
+Here, we simply load the "clean_data.csv" file from the folder. The data has been cleaned and transformed to make the task easier and allow you to focus on modelling.  
+If you are curious about the process or have reasons to doubt the data you see, you can check the "early_processing.Rmd" file in the "raw_data" folder. If that can be useful in any way, the file contains some cool template for trace plots using gganimate.
+```{r}
+df <- read.csv("clean_data.csv")
+
+df$website <- as.factor(df$website)
+df$event <- as.factor(df$event)
+df$name <- as.factor(df$name)
+```
+The task was as follow:
+10 participants were asked to order 2 cinema tickets to go see PARASITE on Friday evening. They were asked to do so on 2 different websites and were randomly assigned to 2 different groups determining which website they saw first.  
+Eye mouvement, pupil diameter and mouse mouvement was recorded.  
+
+
+
+# DATAFRAME:
+## DEMOGRAPHICS
+- name: the name of the participant
+- age: its age
+- order_tickets_online: how often does the participant order cinema tickets online (3 levels: never, rarely, often)
+- cinemaxx_1st: wether they started with the cinemaxx or nfbio website (binary: 1 -> cinemaxx, 0 -> nfbio)
+- session: which session the datapoint belongs to (2 levels)
+- website: which website was being explored (2 categories: cinemaxx, nfbio)
+
+## TIME VARIABLES
+- timestep: the eyetracker saves series of frames, this indicates the number of the frame starting from the beginning of the capture (by session, within participant)
+- time: time from beginning of the experiment by participant and session (in ms)
+- tp: time from beginning of the experiment at the next step (basically, t+1, in ms)
+- timegap: amount of time between this time step and the previous one (t - (t-1), in ms)
+
+## GAZE VARIABLES
+- x: horizontal position of the gaze on the screen (in pixels)
+- y: vertical position of the gaze on the screen (in pixels)
+- xp: horizontal position of the gaze on the screen at time t+1 (in pixels)
+- yp: vertical position of the gaze on the screen at time t+1 (in pixels)
+- velocity: the velocity of eye movement between t and t+1 (in pxl/ms)
+
+## FIXATION/SACCADE VARIABLES
+- event: wether the movement has been categorised as a saccade or a fixation based on velocity at this timestep (2 categories: fixation, saccade)
+- event_n: list the events in the order they appeared (by session within participant) /!\ CAREFUL /!\, lists of saccades and fixations are independent but in the same column!
+- event_d: the duration of the event (by event_n) (in ms)
+- center_mean: mean velocity of the current participant for the corresponding type of event
+
+## OTHER VARIABLES
+- pdl: pupil dilation of the left eye (in mm)
+- pdr: pupil dilation of the right eye (in mm)
+- mouse_x: mouse horizontal position at the current timestep (in pixels)
+- mouse_y: mouse vertical position at the current timestep (in pixels)
+
+# How can we use eye tracking data to inform/complement investigations of usability?
+
+## DATA PROCESSING
+Although the data has been cleaned, you might need to transform some variables depending on the ideas you have.  
+
+For example, if you are interested in synchronicity between gaze velocity and mouse velocity, you will need to calculate the velocity of mouse mouvements. (Not that you should be interested in that. Really.)
+```{r}
+
+## CLEANING AND PROCESSING HERE ##
+
+```
+
+## An Example
+Here is a barebone model to sharpen your teeth.
+```{r}
+# Here is a prelimniary model:
+# 1. What is it asking?
+# 2. How would you interpret these results?
+# 3. How would you improve it?
+m1 <- glmer(event ~ website + (1|name), df, family = binomial)
+summary(m1)
+```
+
+
+## GO WILD
+
+Discuss in groups: Using eye tracking, what are good indices of usability?  
+For inspiration, you can refer to the following article (also in the folder: "Ehmke-final.pdf"):  
+https://openaccess.city.ac.uk/id/eprint/3917/1/
+
+Accordingly, and based on your own experience of both websites, make predictions and test them out on this dataset.  
+
+Here are some suggestions from class:  
+1) look at number of fixations/saccades
+2) look at durations of fixations/saccades
+3) the ratio between fixation and saccades
+4) entropy/variability of saccades (?)
+5) other? 
+
+```{r}
+
+```
+
