@@ -1,0 +1,31 @@
+---
+title: "Shiny R"
+author: "Anita Kurm"
+date: "2/28/2020"
+output: html_document
+---
+
+# Shiny workshop for Human Computer Interaction course
+
+Shiny app = both frontend (UI) and backend (data handling)
+
+
+## Set-up
+```{r}
+pacman::p_load(shinydashboard, shiny)
+```
+
+## UI
+
+```{r}
+ui <- dashboardPage(
+  dashboardHeader(),
+  dashboardSidebar(),
+  dashboardBody()
+)
+
+
+```
+
+
+server uses both input and output, which can be defined/called by specifying specific parts of either output$ or input$ 
